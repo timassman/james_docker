@@ -1,0 +1,10 @@
+[Unit]
+Description=Xbox controller driver daemon
+ 
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/xboxdrv --silent
+ 
+[Install]
+WantedBy=multi-user.target
