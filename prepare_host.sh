@@ -37,6 +37,10 @@ sudo systemctl enable xboxdrv.service
 # Start the service
 sudo systemctl start xboxdrv.service
 
+# Allow user to read/write to xbox controller
+# Permissions will be given on to docker
+sudo cp 10-xbox-controller.rules /etc/udev/rules.d/
+
 # ********************************************************
 # * Install docker                                       *
 # ********************************************************
@@ -74,4 +78,9 @@ sudo usermod -aG docker $USER
 # Activate the changes to groups
 newgrp docker
 
+# ********************************************************
+# * Install other packages                               *
+# ********************************************************
 
+# Install text editor nano
+sudo apt install nano

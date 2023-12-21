@@ -41,15 +41,21 @@ RUN echo -e "source ~/ros2_ws/install/local_setup.bash\n" >> ~/.bashrc
 # Add user to dialout group
 RUN sudo usermod -a -G dialout $(whoami)
 
+# Add the overlay to the default ros_entrypoint script
+COPY ros_entrypoint.sh /ros_entrypoint.sh
+ENTRYPOINT ["/ros_entrypoint.sh"]
+CMD ["bash"]
+
 # ********************************************************
 # * Add ROS packages                                     *
 # ********************************************************
 
 # Add Roomba packages
-# https://github.com/AutonomyLab/create_robot
+# Forked from https://github.com/AutonomyLab/create_robot
 RUN cd ~/ros2_ws/src \
-    && git clone https://github.com/autonomylab/create_robot.git \
-    && git clone https://github.com/AutonomyLab/libcreate.git
+    && git clone https://github.com/timassman/create_robot.git \
+    && git clone https://github.com/AutonomyLab/libcreate.git \
+    && git clone https://github.com/timassman/james_robot.git
 
 # ********************************************************
 # * Install dependencies and build                       *
@@ -62,4 +68,10 @@ RUN cd ~/ros2_ws \
 RUN cd ~/ros2_ws \
     && source /opt/ros/$ROS_DISTRO/setup.bash \
     && colcon build --symlink-install \
-    && source ~/ros2_ws/install/local_setup.bash \
+    && source ~/ros2_ws/install/local_setup.bash
+
+# ********************************************************
+# * Install other packages                               *
+# ********************************************************
+
+RUN sudo apt install nano -y
