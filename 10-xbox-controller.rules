@@ -1,1 +1,3 @@
-KERNEL=="event9" SUBSYSTEM=="input" MODE="0666"
+# https://unix.stackexchange.com/questions/704759/finding-the-dev-input-event-path-of-a-device-from-its-name
+SUBSYSTEMS=="input" ATTRS{name}=="Xbox Gamepad (userspace driver)" MODE="0666" SYMLINK+="/input/xbox-controller"
+

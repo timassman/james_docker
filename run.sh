@@ -14,9 +14,12 @@
 # --net=host --pid=host are needed to receive topic data on another host machine
 # https://answers.ros.org/question/358453/ros2-docker-multiple-hosts/
 
+# how to get the path of the xbox-controller symlink:
+# https://stackoverflow.com/questions/53853845/docker-device-works-with-absolute-device-path-fails-with-symlink
+
 docker run -it \
   --name robojames \
-  --device=/dev/ttyUSB0 --device=/dev/input/event9 --device=/dev/bus/usb \
+  --device=/dev/ttyUSB0 --device=$(readlink -f /dev/input/xbox-controller) --device=/dev/bus/usb \
   --restart unless-stopped \
   --net=host \
   --pid=host \
