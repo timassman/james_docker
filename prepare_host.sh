@@ -41,6 +41,12 @@ sudo systemctl start xboxdrv.service
 # Permissions will be given on to docker
 sudo cp 10-xbox-controller.rules /etc/udev/rules.d/
 
+# Allow user to read/write to kinect
+# Permissions will be given on to docker
+sudo cp 10-kinect.rules /etc/udev/rules.d/
+echo -1 | sudo tee -a /sys/module/usbcore/parameters/autosuspend
+
+
 # ********************************************************
 # * Install docker                                       *
 # ********************************************************
@@ -78,9 +84,37 @@ sudo usermod -aG docker $USER
 # Activate the changes to groups
 newgrp docker
 
+
+# ********************************************************
+# * Install VSCode                                       *
+# ********************************************************
+
+# Might be useful when debugging on the jetson itself
+# https://code.visualstudio.com/docs/setup/linux
+
+sudo apt-get install wget gpg
+wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
+sudo install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
+sudo sh -c 'echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list'
+rm -f packages.microsoft.gpg
+
+sudo apt install apt-transport-https
+sudo apt update
+sudo apt install code # or code-insiders
+
 # ********************************************************
 # * Install other packages                               *
 # ********************************************************
 
 # Install text editor nano
 sudo apt install nano
+
+# ********************************************************
+# * Other settings                                       *
+# ********************************************************
+
+# Store logs of previous boots, to find errors:
+# https://www.digitalocean.com/community/tutorials/how-to-use-journalctl-to-view-and-manipulate-systemd-logs#past-boots
+sudo mkdir -p /var/log/journal
+echo "Storage=persistent" | sudo tee -a  /etc/systemd/journald.conf
+

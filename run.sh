@@ -7,10 +7,19 @@
 
 # Xbox controller: /dev/input/event9 (found by `cat /proc/bus/input/devices`)
 
+# The Kinect shows up as a new /dev/bus/usb device, the id can change, so forwarding all
+
+# --restart unless-stopped makes sure it starts at boot of the Jetson
+
+# --net=host --pid=host are needed to receive topic data on another host machine
+# https://answers.ros.org/question/358453/ros2-docker-multiple-hosts/
+
 docker run -it \
   --name robojames \
-  --device=/dev/ttyUSB0 --device=/dev/input/event9 \
+  --device=/dev/ttyUSB0 --device=/dev/input/event9 --device=/dev/bus/usb \
   --restart unless-stopped \
+  --net=host \
+  --pid=host \
   robojames \
   sh -c "ros2 launch james_bringup james.launch.py"
   
