@@ -47,10 +47,10 @@ ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]
 
 # ********************************************************
-# * Build Kinect driver                                  *
+# * Build Kinect drivers                                  *
 # ********************************************************
 
-# Needed for kinect_ros2
+# libfreenect needed for kinect v1
 # https://github.com/fadlio/kinect_ros2/issues/5
 RUN cd ~/ros2_ws/src \
     && git clone https://github.com/OpenKinect/libfreenect \
@@ -60,6 +60,21 @@ RUN cd ~/ros2_ws/src \
     && cmake .. \
     && sudo ldconfig \
     && sudo make install
+
+# libfreenect2 needed for kinect v2
+# https://github.com/OpenKinect/libfreenect2?tab=readme-ov-file#linux
+RUN sudo apt-get install libusb-1.0-0-dev -y \
+    && sudo apt-get install libturbojpeg0-dev -y \
+    && sudo apt-get install libglfw3-dev -y
+
+RUN cd ~/ros2_ws/src \
+    && git clone https://github.com/OpenKinect/libfreenect2.git \
+    && cd libfreenect2 \
+    && mkdir build \
+    && cd build \
+    && cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/freenect2 \
+    && make \
+    && make install
 
 # ********************************************************
 # * Add ROS packages                                     *
@@ -94,6 +109,11 @@ RUN cd ~/ros2_ws/src \
 # by matlabbe to contain XYZRGB output
 RUN cd ~/ros2_ws/src \
     && git clone https://github.com/matlabbe/kinect_ros2.git
+
+# Could not find ROS2 package for Kinect2
+# Therefore forked and modified the one for Kinect1
+RUN cd ~/ros2_ws/src \
+    && git clone https://github.com/timassman/kinect2_ros2.git
 
 # ********************************************************
 # * Install dependencies and build                       *
