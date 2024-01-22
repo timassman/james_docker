@@ -37,6 +37,10 @@ sudo systemctl enable xboxdrv.service
 # Start the service
 sudo systemctl start xboxdrv.service
 
+# ********************************************************
+# * Udev rules                                           *
+# ********************************************************
+
 # Allow user to read/write to xbox controller
 # Permissions will be given on to docker
 sudo cp 10-xbox-controller.rules /etc/udev/rules.d/
@@ -46,6 +50,13 @@ sudo cp 10-xbox-controller.rules /etc/udev/rules.d/
 sudo cp 10-kinect.rules /etc/udev/rules.d/
 echo -1 | sudo tee -a /sys/module/usbcore/parameters/autosuspend
 
+# In Linux(Ubuntu platform) environment, USB latency time is set to 16ms by default.
+# Set the communication latency time to the lowest value (1ms) between DYNAMIXEL’s and PC connected via USB.
+sudo cp 99-open-manipulator-cdc.rules /etc/udev/rules.d/
+
+# Reload rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
 
 # ********************************************************
 # * Install docker                                       *

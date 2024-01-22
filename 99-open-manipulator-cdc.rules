@@ -1,0 +1,4 @@
+#https://github.com/ROBOTIS-GIT/open_manipulator/blob/humble-devel/open_manipulator_x_controller/99-open-manipulator-cdc.rules
+#http://linux-tips.org/t/prevent-modem-manager-to-capture-usb-serial-devices/284/2
+
+KERNEL=="ttyUSB*", DRIVERS=="ftdi_sio", MODE="0666", ATTR{device/latency_timer}="1"

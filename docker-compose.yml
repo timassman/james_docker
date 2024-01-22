@@ -1,0 +1,22 @@
+# https://docs.ros.org/en/eloquent/Tutorials/Run-2-nodes-in-two-separate-docker-containers.html
+# https://docs.docker.com/compose/compose-file/compose-file-v3/
+# https://www.composerize.com/
+version: "3"
+services:
+    robojames:
+        stdin_open: true
+        tty: true
+        container_name: robojames
+        devices:
+            - /dev/ttyUSB0
+            - /dev/ttyUSB1
+            - $(readlink -f /dev/input/xbox-controller)
+            - /dev/bus/usb
+        #restart: unless-stopped
+        network_mode: host
+        pid: host
+        image: robojames
+
+# https://github.com/ros-planning/navigation2/pkgs/container/navigation2
+  navigation2:
+    image: ghcr.io/ros-planning/navigation2:main-1.2.0
