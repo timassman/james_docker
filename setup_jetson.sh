@@ -167,10 +167,34 @@ if ! grep -q "xbox-controller" /etc/udev/rules.d/10-xbox-controller.rules 2>/dev
         | sudo tee /etc/udev/rules.d/10-xbox-controller.rules > /dev/null
 fi
 
-# OAK-D Pro camera (Luxonis vendor ID: 03e7)
+# OAK-D cameras (Luxonis vendor ID: 03e7 — covers both OAK-D Pro and OAK-D Lite)
+#
+# IMPORTANT — Jetson Orin Nano USB port warning:
+# The four USB-A ports on the case are labelled "USB 3.0" but are physically wired
+# to the USB 2.0 controller (480 Mbps max). This is a hardware limitation of the
+# carrier board, not a cable or driver issue.
+# Only the USB-C port provides real USB 3.0 (5 Gbps).
+#
+# - OAK-D Pro:  connect to the USB-C port (directly or via USB 3.0 hub).
+#               Needs USB 3.0 for stereo depth + RGB at full resolution (~1-3 Gbps).
+# - OAK-D Lite: USB 2.0 only by design — any USB-A port is fine.
 if ! grep -q "03e7" /etc/udev/rules.d/80-movidius.rules 2>/dev/null; then
     echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="03e7", MODE="0666"' \
         | sudo tee /etc/udev/rules.d/80-movidius.rules > /dev/null
+fi
+
+# Roomba serial adapter — creates /dev/roomba symlink used by run.sh
+# FTDI FT232 chip, serial number AC00MLAL (identified via udevadm info -a /dev/ttyUSB*)
+if ! grep -q "AC00MLAL" /etc/udev/rules.d/10-roomba.rules 2>/dev/null; then
+    echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{serial}=="AC00MLAL", SYMLINK+="roomba", MODE="0666"' \
+        | sudo tee /etc/udev/rules.d/10-roomba.rules > /dev/null
+fi
+
+# OpenManipulator serial adapter — creates /dev/openmanipulator symlink used by run.sh
+# FTDI FT232H chip, serial number FT7928TQ (identified via udevadm info -a /dev/ttyUSB*)
+if ! grep -q "FT7928TQ" /etc/udev/rules.d/10-openmanipulator.rules 2>/dev/null; then
+    echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{serial}=="FT7928TQ", SYMLINK+="openmanipulator", MODE="0666"' \
+        | sudo tee /etc/udev/rules.d/10-openmanipulator.rules > /dev/null
 fi
 
 # Dynamixel USB serial: reduce latency from 16ms to 1ms, prevent ModemManager from capturing it

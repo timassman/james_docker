@@ -7,14 +7,47 @@ Running ROS2 Humble on a Jetson Orin Nano (ARM64, CUDA).
 
 ## Hardware
 
-| Component | Device in container |
-|---|---|
-| Roomba 500 | `/dev/ttyUSB0` |
-| OpenManipulator-X | `/dev/ttyUSB1` |
-| OAK-D Pro camera | `/dev/bus/usb` (dynamic cgroup rule) |
-| Xbox controller | `/dev/input/xbox-controller` (udev symlink) |
+| Component | USB connection | Speed | Device in container |
+|---|---|---|---|
+| OAK-D Pro | USB-C port → USB 3.0 hub | 5000M (USB 3.0) | `/dev/bus/usb` |
+| OAK-D Lite | any USB-A port | 480M (USB 2.0 max by design) | `/dev/bus/usb` |
+| OpenManipulator-X | any USB-A port | 480M | `/dev/openmanipulator` (udev symlink) |
+| Roomba 500 | any USB-A port | 12M | `/dev/roomba` (udev symlink) |
+| Xbox controller | USB hub (via USB-C) | 12M | `/dev/input/xbox-controller` (udev symlink) |
+| Mouse + keyboard | USB hub (via USB-C) | 1.5M | — |
 
 Jetson SSH: `ssh jetson-orin` (configured in `~/.ssh/config`)
+
+### USB ports — important
+
+The Jetson Orin Nano Developer Kit case labels all four USB-A ports as "USB 3.0", but
+this is misleading. All four USB-A ports are physically wired to the USB 2.0 controller
+and max out at 480 Mbps regardless of cable quality. This is a confirmed hardware routing
+decision on the carrier board, not a driver or cable issue.
+
+**Only the USB-C port provides real USB 3.0 (5 Gbps).**
+
+- **OAK-D Pro** must be on the USB-C port (directly or via USB 3.0 hub). It needs USB 3.0
+  for stereo depth + RGB at full resolution (~1-3 Gbps).
+- **OAK-D Lite** is USB 2.0 only by design — any USB-A port is fine.
+
+Reference: https://forums.developer.nvidia.com/t/orin-nano-8gb-no-usb-3-0/313345
+
+### Verifying USB connections
+
+Use `lsusb -t` on the Jetson to verify all devices are on the correct bus:
+
+```
+Bus 02 (USB 3.0) → hub → OAK-D Pro at 5000M   ← correct
+Bus 01 (USB 2.0) → OAK-D Lite at 480M          ← correct (USB 2.0 by design)
+                 → Roomba at 12M
+                 → OpenManipulator at 480M
+                 → hub → Xbox controller, mouse, keyboard
+```
+
+Note: the OAK-D Pro shows at **480M in bootloader mode** before the depthai driver starts.
+It re-enumerates at **5000M after firmware upload** when `ros2 launch depthai_ros_driver camera.launch.py`
+is running inside the container. Always verify with the driver active.
 
 ---
 
@@ -30,6 +63,7 @@ Jetson SSH: `ssh jetson-orin` (configured in `~/.ssh/config`)
 | `setup_monitor_laptop.sh` | laptop | One-time: ROS2 + Fast DDS config to see Jetson topics on laptop |
 | `run.sh` | Jetson | Start the robot container |
 | `test_container.sh` | Jetson | Smoke test: GPU, ROS2, camera, serial devices |
+| `sync_james.sh` | laptop | Sync local changes to Jetson via rsync (no commit needed) |
 
 ---
 
@@ -117,7 +151,34 @@ Python packages (depthai, open3d, ultralytics), OAK-D camera detection, serial d
 
 ---
 
-## Scenario E — After a Dockerfile change
+## Scenario E — Iterative script development (no Dockerfile change)
+
+When editing scripts (`run.sh`, `setup_jetson.sh`, etc.) but not the Dockerfile,
+there is no need to rebuild the image. Use `sync_james.sh` to push changes directly
+to the Jetson for testing, then commit once it works.
+
+```bash
+# On the laptop — after editing a script:
+./sync_james.sh            # rsync changed files to Jetson (no commit needed)
+
+# On the Jetson — test the change:
+./run.sh                   # or whichever script was changed
+
+# Back on the laptop — once it works:
+git add .
+git commit -m "..."
+git push
+
+# On the Jetson — sync back to the committed version:
+git reset --hard origin/main
+```
+
+`git reset --hard origin/main` discards the rsync'd files and replaces them with
+the committed version — keeping the Jetson in sync with git.
+
+---
+
+## Scenario F — After a Dockerfile change
 
 ```bash
 # On the laptop:

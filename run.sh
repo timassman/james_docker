@@ -10,11 +10,17 @@
 #   - After a reboot — Docker restarts the container automatically
 #     (--restart unless-stopped + Docker enabled as systemd service)
 #
-# Devices:
-#   /dev/ttyUSB0              — Roomba serial
-#   /dev/ttyUSB1              — OpenManipulator (Dynamixel)
+# Devices (all optional — skipped with a warning if not connected):
+#   /dev/roomba               — Roomba serial (symlink set by udev rule)
+#   /dev/openmanipulator      — OpenManipulator Dynamixel (symlink set by udev rule)
 #   /dev/input/xbox-controller — Xbox controller (symlink set by udev rule)
-#   /dev/bus/usb              — OAK-D Pro camera (USB)
+#   /dev/bus/usb              — OAK-D cameras (USB, dynamic cgroup rule)
+#
+# OAK-D USB port warning:
+#   The four USB-A ports on the Jetson case are labelled "USB 3.0" but are physically
+#   wired to the USB 2.0 controller (480 Mbps). Only the USB-C port is real USB 3.0.
+#   Connect the OAK-D Pro to the USB-C port (directly or via USB 3.0 hub).
+#   The OAK-D Lite is USB 2.0 only by design — any port works.
 #
 # --restart unless-stopped   — auto-starts on Jetson reboot
 # --net=host --pid=host      — needed for ROS2 topic communication across hosts
@@ -46,12 +52,27 @@ fi
 
 echo "[INFO] Starting $IMAGE..."
 
+# Resolve serial devices (optional — warn if not connected)
+ROOMBA_DEVICE=""
+if [ -e /dev/roomba ]; then
+    ROOMBA_DEVICE="--device=/dev/roomba"
+else
+    echo "[WARN] Roomba not found at /dev/roomba — skipping."
+fi
+
+ARM_DEVICE=""
+if [ -e /dev/openmanipulator ]; then
+    ARM_DEVICE="--device=/dev/openmanipulator"
+else
+    echo "[WARN] OpenManipulator not found at /dev/openmanipulator — skipping."
+fi
+
 docker run -it \
     --name "$CONTAINER" \
     --runtime=nvidia \
     --gpus all \
-    --device=/dev/ttyUSB0 \
-    --device=/dev/ttyUSB1 \
+    $ROOMBA_DEVICE \
+    $ARM_DEVICE \
     -v /dev/bus/usb:/dev/bus/usb \
     --device-cgroup-rule='c 189:* rmw' \
     $XBOX_DEVICE \
