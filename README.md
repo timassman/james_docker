@@ -170,9 +170,10 @@ git commit -m "..."
 git push
 
 # On the Jetson — sync back to the committed version:
-git reset --hard origin/main
+git fetch && git reset --hard origin/main
 ```
 
+`git fetch` downloads the latest commits from GitHub.
 `git reset --hard origin/main` discards the rsync'd files and replaces them with
 the committed version — keeping the Jetson in sync with git.
 
@@ -191,21 +192,46 @@ the committed version — keeping the Jetson in sync with git.
 
 ---
 
-## Scenario F — Monitor from the laptop (RViz2)
+## Scenario G — Monitor from the laptop (RViz2)
 
-With the robot container running on the Jetson and `setup_monitor_laptop.sh` applied:
+### 1. Start the driver on the Jetson (inside the container)
 
 ```bash
-# Open a new terminal on the laptop (Fast DDS config is applied via ~/.bashrc):
-ros2 topic list            # should show topics from the Jetson
-rviz2                      # open RViz2 and add camera/point cloud displays
+ros2 launch depthai_ros_driver camera.launch.py pointcloud.enable:=true
 ```
 
+### 2. Open a new terminal on the laptop
+
+```bash
+source ~/.bashrc           # applies LARGE_DATA mode and ROS_DOMAIN_ID
+ros2 daemon stop           # restart daemon to pick up new DDS settings
+ros2 topic list            # should show topics from the Jetson
+rviz2
+```
+
+### 3. Configure RViz2
+
+1. **Global Options → Fixed Frame**: change `map` to `oak`
+2. Click **Add → By topic → /oak/points → PointCloud2**
+3. In the display panel: set **Reliability Policy** to **Best Effort**
+
+The point cloud updates live at ~15 Hz (XYZRGB, full 720p resolution).
+
 Key topics published by the OAK-D Pro:
+- `/oak/points` — XYZRGB point cloud (enable with `pointcloud.enable:=true`)
 - `/oak/rgb/image_raw` — RGB camera
 - `/oak/stereo/image_raw` — depth image (16-bit)
 - `/oak/nn/spatial_detections` — neural network 3D detections
 - `/oak/imu/data` — IMU
+
+> **Note:** Fast DDS LARGE_DATA mode (set by `setup_monitor_laptop.sh` and `run.sh`)
+> is required for large topics like point clouds. It uses TCP for data transport,
+> avoiding UDP fragmentation loss.
+>
+> **WiFi limitation:** point clouds (28 MB/frame) and depth images (1.8 MB/frame) are
+> too large for reliable WiFi delivery — UDP fragments are systematically dropped even
+> with LARGE_DATA mode. A wired LAN connection between laptop and Jetson is required
+> for monitoring. Connect both to the same switch via ethernet cable.
 
 ---
 

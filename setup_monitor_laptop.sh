@@ -1,13 +1,13 @@
 #!/bin/bash
 # Sets up the laptop as a monitoring station for the James robot.
 # Configures ROS2 and Fast DDS so the laptop can see topics published
-# by the Docker container on the Jetson, even when docker0 is present.
+# by the Docker container on the Jetson.
 # Safe to run multiple times.
 #
 # What this does:
 #   1. Sources ROS2 Humble automatically in every new terminal
-#   2. Configures Fast DDS to use only LAN interfaces (excludes docker0)
-#      IP is detected dynamically, so this survives IP changes and reboots.
+#   2. Enables Fast DDS LARGE_DATA mode (TCP transport for large messages)
+#      Fixes message loss for large topics (images, point clouds) over LAN.
 #   3. Sets ROS_DOMAIN_ID=0 (must match the Jetson container)
 
 set -euo pipefail
@@ -35,53 +35,39 @@ cat >> "$BASHRC" << 'BASHRC_BLOCK'
 source /opt/ros/humble/setup.bash
 export ROS_DOMAIN_ID=0
 
-# Configure Fast DDS to use only real LAN interfaces.
-# Excludes docker0 and other virtual interfaces whose multicast traffic
-# cannot reach the Jetson, which breaks ROS2 topic discovery.
-# Runs dynamically so a new IP after DHCP renewal is picked up automatically.
-_ros2_configure_dds() {
-    # Collect all LAN IPs: exclude loopback, docker (172.x), bridge interfaces
-    local ips
-    ips=$(ip -4 addr show | grep 'inet ' \
-        | grep -v '127\.0\.0\.1\|172\.\|docker\|br-\|virbr' \
-        | awk '{print $2}' | cut -d/ -f1)
-
-    [ -z "$ips" ] && return  # no LAN interface found, skip
-
-    local whitelist=""
-    for ip in $ips; do
-        whitelist+="                <address>$ip</address>\n"
-    done
-
-    export FASTRTPS_DEFAULT_PROFILES_FILE=/tmp/fastdds_ros2.xml
-    printf '<?xml version="1.0" encoding="UTF-8" ?>
-<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
-    <transport_descriptors>
-        <transport_descriptor>
-            <transport_id>lan</transport_id>
-            <type>UDPv4</type>
-            <interfaceWhiteList>
-%s            </interfaceWhiteList>
-        </transport_descriptor>
-    </transport_descriptors>
-    <participant profile_name="CustomParticipantProfile" is_default_profile="true">
-        <rtps>
-            <userTransports>
-                <transport_id>lan</transport_id>
-            </userTransports>
-            <useBuiltinTransports>false</useBuiltinTransports>
-        </rtps>
-    </participant>
-</profiles>\n' "$whitelist" > /tmp/fastdds_ros2.xml
-}
-_ros2_configure_dds
+# Fast DDS LARGE_DATA mode: uses TCP for large messages, UDP for discovery.
+# Required for reliable delivery of large topics (point clouds, depth images) over LAN.
+# Note: WiFi is not reliable enough for these message sizes — use a wired connection.
+# Must match the setting in run.sh on the Jetson.
+export FASTDDS_BUILTIN_TRANSPORTS=LARGE_DATA
 # === end james robot ===
 BASHRC_BLOCK
 
 echo "[INFO] Added ROS2 + Fast DDS config to ~/.bashrc"
 
+# ── ROS2 DDS network tuning ──────────────────────────────────────────────────
+# Increases UDP socket buffers for DDS discovery traffic.
+ROS2_SYSCTL=/etc/sysctl.d/10-ros2-dds.conf
+if [ ! -f "$ROS2_SYSCTL" ]; then
+    sudo tee "$ROS2_SYSCTL" > /dev/null << 'EOF'
+# ROS2 DDS tuning — prevents message loss on high-bandwidth topics (camera, pointcloud)
+net.core.rmem_max=8388608
+net.core.rmem_default=8388608
+net.core.wmem_max=8388608
+net.core.wmem_default=8388608
+EOF
+    sudo sysctl --system -q
+    echo "[INFO] ROS2 DDS network tuning applied."
+else
+    echo "[INFO] ROS2 DDS tuning already configured."
+fi
+
 # ── Apply to current shell ────────────────────────────────────────────────────
+# Temporarily disable unbound variable check — ROS2 setup.bash references
+# AMENT_TRACE_SETUP_FILES which may not be set in the current shell context.
+set +u
 source /opt/ros/humble/setup.bash
+set -u
 export ROS_DOMAIN_ID=0
 
 echo ""

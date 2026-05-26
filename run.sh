@@ -50,6 +50,14 @@ else
     echo "[WARN] Xbox controller not found at /dev/input/xbox-controller — skipping."
 fi
 
+# Use Fast DDS LARGE_DATA mode: TCP for data, UDP for discovery.
+# Required for reliable delivery of large topics (point clouds, depth images) to the
+# monitoring laptop. Works correctly alongside docker0 and multiple network interfaces.
+# Note: WiFi is not reliable enough for these message sizes — laptop needs a wired LAN
+# connection to receive point clouds. The robot itself can run on WiFi autonomously.
+FASTDDS_MOUNT="-e FASTDDS_BUILTIN_TRANSPORTS=LARGE_DATA"
+echo "[INFO] Fast DDS LARGE_DATA mode enabled (TCP transport for large messages)."
+
 echo "[INFO] Starting $IMAGE..."
 
 # Resolve serial devices (optional — warn if not connected)
@@ -76,6 +84,7 @@ docker run -it \
     -v /dev/bus/usb:/dev/bus/usb \
     --device-cgroup-rule='c 189:* rmw' \
     $XBOX_DEVICE \
+    $FASTDDS_MOUNT \
     --restart "$RESTART_POLICY" \
     --net=host \
     --pid=host \
