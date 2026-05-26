@@ -1,29 +1,63 @@
 #!/bin/bash
+# Creates and starts the robojames Docker container on the Jetson Orin Nano.
+# Safe to run from any directory.
+#
+# When to run this script:
+#   - First time, to create the container from the image
+#   - After deploying a new image with deploy_to_jetson.sh
+#
+# When NOT needed:
+#   - After a reboot — Docker restarts the container automatically
+#     (--restart unless-stopped + Docker enabled as systemd service)
+#
+# Devices:
+#   /dev/ttyUSB0              — Roomba serial
+#   /dev/ttyUSB1              — OpenManipulator (Dynamixel)
+#   /dev/input/xbox-controller — Xbox controller (symlink set by udev rule)
+#   /dev/bus/usb              — OAK-D Pro camera (USB)
+#
+# --restart unless-stopped   — auto-starts on Jetson reboot
+# --net=host --pid=host      — needed for ROS2 topic communication across hosts
+# --runtime=nvidia --gpus all — enables CUDA / Jetson GPU access
 
-# Roomba:          /dev/ttyUSB0
-# OpenManipulator: /dev/ttyUSB1
+set -euo pipefail
 
-# the new joy_node uses eventX instead of jsX to access the xbox controller
-# https://github.com/ros-drivers/joystick_drivers/blob/ros2/joy/README.md#technical-note-about-interfacing-with-joysticks-and-game-controllers-on-linux
+IMAGE="robojames-jetson"
+CONTAINER="robojames"
 
-# Xbox controller: /dev/input/event9 (found by `cat /proc/bus/input/devices`)
+# Restart policy:
+#   on-failure:3     — restart max 3 times on crash, then stop (safe during development)
+#   unless-stopped   — always restart, survives reboot (use when stable in production)
+RESTART_POLICY="on-failure:3"
 
-# The Kinect shows up as a new /dev/bus/usb device, the id can change, so forwarding all
+# Remove existing stopped container with the same name so we can start fresh
+if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
+    echo "[INFO] Removing existing container '$CONTAINER'..."
+    docker rm -f "$CONTAINER"
+fi
 
-# --restart unless-stopped makes sure it starts at boot of the Jetson
+# Resolve xbox controller device (udev creates a symlink, docker needs the real path)
+XBOX_DEVICE=""
+if [ -e /dev/input/xbox-controller ]; then
+    XBOX_DEVICE="--device=$(readlink -f /dev/input/xbox-controller)"
+else
+    echo "[WARN] Xbox controller not found at /dev/input/xbox-controller — skipping."
+fi
 
-# --net=host --pid=host are needed to receive topic data on another host machine
-# https://answers.ros.org/question/358453/ros2-docker-multiple-hosts/
-
-# how to get the path of the xbox-controller symlink:
-# https://stackoverflow.com/questions/53853845/docker-device-works-with-absolute-device-path-fails-with-symlink
+echo "[INFO] Starting $IMAGE..."
 
 docker run -it \
-  --name robojames \
-  --device=/dev/ttyUSB0 --device=/dev/ttyUSB1 --device=$(readlink -f /dev/input/xbox-controller) --device=/dev/bus/usb \
-  --restart unless-stopped \
-  --net=host \
-  --pid=host \
-  robojames 
-  #sh -c "ros2 launch james_bringup james.launch.py"
-  
+    --name "$CONTAINER" \
+    --runtime=nvidia \
+    --gpus all \
+    --device=/dev/ttyUSB0 \
+    --device=/dev/ttyUSB1 \
+    -v /dev/bus/usb:/dev/bus/usb \
+    --device-cgroup-rule='c 189:* rmw' \
+    $XBOX_DEVICE \
+    --restart "$RESTART_POLICY" \
+    --net=host \
+    --pid=host \
+    "$IMAGE"
+    # Uncomment to launch ROS2 directly instead of dropping into a shell:
+    # bash -c "ros2 launch james_bringup james.launch.py"

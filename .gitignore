@@ -44,6 +44,9 @@ qtcreator-*
 
 *~
 
+# Claude Code personal settings (not team-wide)
+.claude/settings.local.json
+
 # Emacs
 .#*
 
