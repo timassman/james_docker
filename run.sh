@@ -5,6 +5,8 @@
 # When to run this script:
 #   - First time, to create the container from the image
 #   - After deploying a new image with deploy_to_jetson.sh
+#   - After changing the docker run options below (devices, mounts, environment)
+#     Recreating the container takes seconds — the image is not rebuilt.
 #
 # When NOT needed:
 #   - After a reboot — Docker restarts the container automatically
@@ -58,6 +60,11 @@ fi
 FASTDDS_MOUNT="-e FASTDDS_BUILTIN_TRANSPORTS=LARGE_DATA"
 echo "[INFO] Fast DDS LARGE_DATA mode enabled (TCP transport for large messages)."
 
+# Development repos: ~/git on the Jetson is mounted into the container at the same path.
+# Repos are synced there from the laptop with sync_to_jetson.sh and built inside the
+# container, so new code can be tested without committing or rebuilding the image.
+# Build output (build/, install/) lands on the Jetson and survives container recreation.
+
 echo "[INFO] Starting $IMAGE..."
 
 # Resolve serial devices (optional — warn if not connected)
@@ -88,6 +95,15 @@ docker run -it \
     --restart "$RESTART_POLICY" \
     --net=host \
     --pid=host \
-    "$IMAGE"
-    # Uncomment to launch ROS2 directly instead of dropping into a shell:
-    # bash -c "ros2 launch james_bringup james.launch.py"
+    -v /home/james/git:/home/james/git \
+    "$IMAGE" \
+    bash -c '
+        # TODO: remove after the next image build — the Dockerfile already installs these.
+        # apt-get update first: the package lists in the image get outdated and old
+        # package versions disappear from the ROS apt server.
+        dpkg-query -s ros-humble-ros2topic >/dev/null 2>&1 \
+            || { sudo apt-get update -q && sudo apt-get install -y -q \
+                     ros-humble-ros2topic ros-humble-ros2action ros-humble-ros2interface; }
+
+        exec bash
+    '

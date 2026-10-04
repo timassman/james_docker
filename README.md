@@ -63,7 +63,7 @@ is running inside the container. Always verify with the driver active.
 | `setup_monitor_laptop.sh` | laptop | One-time: ROS2 + Fast DDS config to see Jetson topics on laptop |
 | `run.sh` | Jetson | Start the robot container |
 | `test_container.sh` | Jetson | Smoke test: GPU, ROS2, camera, serial devices |
-| `sync_james.sh` | laptop | Sync local changes to Jetson via rsync (no commit needed) |
+| `sync_to_jetson.sh <repo>` | laptop | Sync a repo (e.g. `james_docker`, `james_robot`) to `~/git/<repo>` on the Jetson via rsync (no commit needed), see Scenario E and H |
 
 ---
 
@@ -127,14 +127,91 @@ cd james_docker
 
 ## Scenario C — Start the robot
 
+### Create the container (first time, or after changing `run.sh`)
+
 ```bash
 # On the Jetson:
-./run.sh
+timedatectl | grep synchronized                  # must be "yes" (see Troubleshooting)
+ls -l /dev/openmanipulator /dev/roomba /dev/input/xbox-controller   # all USB devices present?
+cd ~/git/james_docker
+./run.sh                                         # detach with Ctrl+P, Ctrl+Q (see below)
+docker exec robojames ls /home/james/git         # mount check: lists the synced repos
 ```
 
-Removes any existing container with the same name and starts a fresh one.
+Removes any existing container with the same name and starts a fresh one from the
+existing image (takes seconds — the image is not rebuilt). Anything installed by hand
+inside the old container is lost; `~/git` (mounted) is kept.
 After the first run, Docker restarts the container automatically on reboot
 (controlled by `RESTART_POLICY` in `run.sh`; default is `on-failure:3` during development).
+
+`run.sh` drops you into a shell inside the container. Leave it with **Ctrl+P, Ctrl+Q**
+(detach); typing `exit` stops the container.
+
+Plug in all USB devices (arm, Roomba, Xbox controller) before running `run.sh`.
+Devices that are missing at that moment are skipped and not available in the container.
+
+### Daily startup
+
+1. Power on the Jetson, and the arm (12 V supply + switch on the controller board)
+2. Connect: `ssh jetson-orin`, or VS Code → Remote-SSH → `jetson-orin`
+3. Check the container is running: `docker ps -a` → `STATUS: Up ...`
+   (if not: `docker start robojames`)
+4. Check the clock is synchronized before starting ROS nodes (see Troubleshooting):
+   `timedatectl` → `System clock synchronized: yes`
+5. Open a shell in the container: `docker exec -it robojames bash`
+   (or VS Code → Attach to Running Container → `/robojames`)
+
+To start the arm, see the README of
+[james_robot](https://github.com/timassman/james_robot).
+
+### Keep processes running with tmux
+
+A process started in a normal terminal stops when the SSH or VS Code connection drops
+(laptop lid closed, WiFi glitch, Reload Window). For the arm this means the motor torque
+is disabled and the arm drops. `tmux` runs terminal sessions on the Jetson itself,
+independent of the connection, so processes keep running and you can reattach later.
+
+Install tmux on the Jetson **host** (the container has no tmux, and anything installed
+there is lost when `run.sh` recreates it):
+
+```bash
+sudo apt install tmux                       # only this package, no system upgrade
+echo "set -g mouse on" >> ~/.tmux.conf      # optional: scroll with mouse/touchpad
+```
+
+Typical use:
+
+```bash
+ssh jetson-orin
+tmux new -s robot                           # new session named "robot"
+docker exec -it robojames bash              # inside tmux: shell in the container
+ros2 launch james_bringup arm.launch.py
+
+# Ctrl+B, then D -> detach: everything keeps running, the laptop can be closed
+
+ssh jetson-orin
+tmux attach -t robot                        # back in the same session, with all output
+```
+
+In VS Code, use a Remote-SSH terminal (runs on the host), not an "Attach to Running
+Container" terminal.
+
+All tmux key bindings start with **Ctrl+B**: release, then press the next key.
+
+| Keys / command | Action |
+|---|---|
+| Ctrl+B, D | Detach; everything keeps running |
+| Ctrl+B, C | New window (e.g. for `ros2 topic hz`) |
+| Ctrl+B, N / P | Next / previous window |
+| Ctrl+B, % / " | Split the window side by side / top and bottom |
+| Ctrl+B, arrow keys | Move between split panes |
+| Ctrl+B, [ | Scroll back through output (arrows/PgUp, `q` to exit) |
+| `tmux ls` | List running sessions |
+| `tmux attach -t robot` | Reattach to session "robot" |
+| `tmux kill-session -t robot` | Stop the session **and everything in it** — the arm drops |
+
+Ctrl+C inside tmux works as usual. Once the arm is started automatically with the
+container, Docker keeps it running and tmux is only needed for manual testing.
 
 ---
 
@@ -154,12 +231,12 @@ Python packages (depthai, open3d, ultralytics), OAK-D camera detection, serial d
 ## Scenario E — Iterative script development (no Dockerfile change)
 
 When editing scripts (`run.sh`, `setup_jetson.sh`, etc.) but not the Dockerfile,
-there is no need to rebuild the image. Use `sync_james.sh` to push changes directly
+there is no need to rebuild the image. Use `sync_to_jetson.sh` to push changes directly
 to the Jetson for testing, then commit once it works.
 
 ```bash
 # On the laptop — after editing a script:
-./sync_james.sh            # rsync changed files to Jetson (no commit needed)
+./sync_to_jetson.sh james_docker   # rsync changed files to Jetson (no commit needed)
 
 # On the Jetson — test the change:
 ./run.sh                   # or whichever script was changed
@@ -232,6 +309,71 @@ Key topics published by the OAK-D Pro:
 > too large for reliable WiFi delivery — UDP fragments are systematically dropped even
 > with LARGE_DATA mode. A wired LAN connection between laptop and Jetson is required
 > for monitoring. Connect both to the same switch via ethernet cable.
+
+---
+
+## Scenario H — Develop ROS packages on the robot (no image rebuild)
+
+ROS repos under development (`james_robot`, `james_perception`, ...) are not rebuilt into
+the image for every change. `~/git` on the Jetson is mounted into the container at the
+same path, so code synced there can be built inside the container directly.
+
+```
+Laptop                          Jetson (host)              Container
+~/Git-Workspace/<repo>  ─rsync─▶  ~/git/<repo>  ═mount═▶  /home/james/git/<repo>
+(edit + git)                    (copy, no git)             (colcon build)
+```
+
+```bash
+# On the laptop:
+./sync_to_jetson.sh james_robot
+
+# Inside the container:
+cd ~/git/james_robot
+colcon build --symlink-install --packages-select james_bringup
+source install/local_setup.bash     # overrides the version baked into the image
+```
+
+`--symlink-install` makes launch and config file changes take effect after the next
+sync without rebuilding; only C++ changes need a rebuild. Build output stays on the
+Jetson and survives container recreation. Commit on the laptop once it works on the robot.
+
+---
+
+## Troubleshooting
+
+### `docker ps` shows "Up 4 months" right after booting
+
+The Jetson has no battery-backed clock. At boot the clock starts at the last saved time
+and jumps to the correct time once NTP synchronizes. Docker computes the uptime from the
+old start time. Harmless for Docker, but **ROS nodes started before the clock is
+synchronized get wrong timestamps** (TF extrapolation errors, MoveIt "robot state not
+recent"). Check with `timedatectl` before starting ROS nodes.
+
+### `ros2: error: ... invalid choice: 'topic'`
+
+The current image lacks the `ros2 topic`, `ros2 action` and `ros2 interface` CLI
+extensions; `run.sh` installs them when the container is created. If that failed (e.g. no
+internet or the clock was not synchronized yet), install them inside the container:
+
+```bash
+sudo apt-get update && sudo apt-get install -y \
+    ros-humble-ros2topic ros-humble-ros2action ros-humble-ros2interface
+```
+
+This is no longer needed after the next image build: the Dockerfile already installs them.
+
+### RViz on the laptop: "Unable to create a suitable GLXContext"
+
+Usually an NVIDIA driver update was installed in the background while the old kernel
+module is still loaded. Check with `nvidia-smi`: "Driver/library version mismatch" →
+reboot the laptop.
+
+### MoveIt: "Joint '...' from the starting state is outside bounds"
+
+The arm is in a position outside the URDF joint limits (e.g. after it dropped when the
+torque was disabled). MoveIt cannot plan from there. See the README of james_robot
+for how to move it back into range.
 
 ---
 

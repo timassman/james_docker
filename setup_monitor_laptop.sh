@@ -10,6 +10,9 @@
 #      Fixes message loss for large topics (images, point clouds) over LAN.
 #   3. Sets ROS_DOMAIN_ID=0 (must match the Jetson container)
 
+# Save and restore shell options so sourcing this script doesn't pollute
+# the caller's shell with 'set -euo pipefail'.
+_JAMES_SAVED_OPTS=$(set +o; shopt -p 2>/dev/null || true)
 set -euo pipefail
 
 BASHRC="$HOME/.bashrc"
@@ -73,9 +76,12 @@ export ROS_DOMAIN_ID=0
 echo ""
 echo "[INFO] Setup complete!"
 echo ""
-echo "Reload your terminal or run:"
-echo "  source ~/.bashrc"
-echo ""
 echo "Then test with:"
-echo "  ros2 topic list    # should show Jetson topics when robot is running"
-echo "  rviz2              # start RViz2 for visualization"
+echo "  ros2 daemon stop && ros2 topic list"
+echo "  rviz2"
+echo ""
+echo "In future terminals FASTDDS_BUILTIN_TRANSPORTS is set automatically via ~/.bashrc"
+
+# Restore the caller's shell options (undo set -euo pipefail)
+eval "$_JAMES_SAVED_OPTS" 2>/dev/null || true
+unset _JAMES_SAVED_OPTS
