@@ -185,6 +185,7 @@ Typical use:
 ssh jetson-orin
 tmux new -s robot                           # new session named "robot"
 docker exec -it robojames bash              # inside tmux: shell in the container
+source ~/git/james_robot/install/local_setup.bash   # see the james_robot README
 ros2 launch james_bringup arm.launch.py
 
 # Ctrl+B, then D -> detach: everything keeps running, the laptop can be closed
